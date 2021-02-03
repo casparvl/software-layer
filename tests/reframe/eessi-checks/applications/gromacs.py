@@ -73,7 +73,7 @@ class GromacsContainerBase(GromacsSizedTests):
 
         super().__init__(scale)
 
-        self.tags = {'container'}
+        self.tags.add('container')
         self.valid_prog_environs = ['container']
 
         self.prerun_cmds = ['source shared_alien_cache_minimal.sh > /dev/null']
