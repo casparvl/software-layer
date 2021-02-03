@@ -21,12 +21,57 @@ class GromacsBase(rfm.RunOnlyRegressionTest):
             sn.assert_reference(energy, energy_reference, -0.001, 0.001)
         ])
 
+        self.perf_patterns = {
+            'perf': sn.extractsingle(r'Performance:\s+(?P<perf>\S+)',
+                                     output_file, 'perf', float)
+        }
+        self.reference = {
+            '*': {
+                'perf': (None, None, None, 'ns/day')
+            }
+        }
+
         self.maintainers = ['casparvl']
 
-class GromacsContainerBase(GromacsBase):
-    def __init__(self, nsteps):
+class GromacsSizedTests(GromacsBase):
+    def __init__(self, scale):
 
         super().__init__()
+
+        if scale == 'single':
+            self.nsteps = '10000'
+            self.num_nodes = 1
+        elif scale == 'small':
+            self.nsteps = '40000'
+            self.num_nodes = 4
+        elif scale == 'large':
+            self.nsteps = '100000'
+            self.num_nodes = 10
+
+        self.num_tasks = 16 * self.num_nodes
+        self.num_tasks_per_node = 16
+        self.tags = {scale}
+
+
+@rfm.parameterized_test(['single'], ['small'], ['large'])
+class GromacsNative(GromacsSizedTests):
+    def __init__(self, scale):
+
+        super().__init__(scale)
+
+        self.tags.add('native')
+        self.valid_prog_environs = ['*']
+
+        self.modules = ['GROMACS']
+        self.executable = 'gmx_mpi'
+        self.executable_opts = ['mdrun', '-s ion_channel.tpr', '-maxh 0.50',
+                '-resethway', '-noconfout', '-nsteps ' + self.nsteps]
+
+@rfm.parameterized_test(['single'], ['small'], ['large'])
+class GromacsContainerBase(GromacsSizedTests):
+    def __init__(self, scale):
+
+        super().__init__(scale)
 
         self.tags = {'container'}
         self.valid_prog_environs = ['container']
@@ -44,23 +89,6 @@ class GromacsContainerBase(GromacsBase):
             'source /cvmfs/pilot.eessi-hpc.org/2020.12/init/bash',
             'module load GROMACS',
             'which gmx_mpi',
-            'gmx_mpi mdrun -s ion_channel.tpr -maxh 0.50 -resethway -noconfout -nsteps ' + nsteps
+            'gmx_mpi mdrun -s ion_channel.tpr -maxh 0.50 -resethway -noconfout -nsteps ' + self.nsteps
         ]
 
-@rfm.parameterized_test(['single'], ['small'], ['large'])
-class GromacsContainer(GromacsContainerBase):
-    def __init__(self, scale):
-         
-        if scale == 'single':
-            super().__init__('10000')
-            self.num_nodes = 1
-        elif scale == 'small':
-            super().__init__('40000')
-            self.num_nodes = 4
-        elif scale == 'large':
-            super().__init__('100000')
-            self.num_nodes = 10
-
-        self.num_tasks = 24 * self.num_nodes
-        self.num_tasks_per_node = 24
-        self.tags.add(scale)
