@@ -23,6 +23,29 @@ site_configuration = {
                 },
              ]
          },
+        {
+            'name': 'generoso',
+            'descr': 'CSCS test infrastructure',
+            'modules_system': 'lmod',
+            'hostnames': ['generoso'],
+            'partitions': [
+                {
+                    'name': 'normal',
+                    'scheduler': 'squeue',
+                    'launcher': 'mpirun',
+                    'access': ['-p normal'],
+                    'environs': ['foss', 'container'],
+                    'container_platforms': [
+                        {
+                            'type': 'Singularity',
+                            'modules': [],
+                            'variables': [],
+                        }
+                    ],
+                    'descr': 'normal partition'
+                }
+            ]
+        },
      ],
     'environments': [
         {
