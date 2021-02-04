@@ -2,10 +2,6 @@ import os
 import reframe as rfm
 import reframe.utility.sanity as sn
 
-# TODO:
-
-# - Add GromacsNative class, that doesn't run based on the container but on native CVMFS mount. Test @generoso
-
 class GromacsBase(rfm.RunOnlyRegressionTest):
     def __init__(self):
         self.valid_systems = ['*']
