@@ -75,14 +75,14 @@ class GromacsContainer(GromacsSizedTests):
         self.prerun_cmds = ['source shared_alien_cache_minimal.sh > /dev/null']
 
         self.container_platform = 'Singularity'
-        self.container_platform.image = 'docker://eessi/client-pilot:centos7-$(uname -m)-2020.10'
+        self.container_platform.image = 'docker://eessi/client-pilot:centos7-$(uname -m)'
         self.container_platform.options = [
             '--fusemount "container:cvmfs2 cvmfs-config.eessi-hpc.org /cvmfs/cvmfs-config.eessi-hpc.org"',
             '--fusemount "container:cvmfs2 pilot.eessi-hpc.org /cvmfs/pilot.eessi-hpc.org"'
         ]
 
         self.container_platform.commands = [
-            'source /cvmfs/pilot.eessi-hpc.org/2020.12/init/bash',
+            'source /cvmfs/pilot.eessi-hpc.org/latest/init/bash',
             'module load GROMACS',
             'which gmx_mpi',
             'gmx_mpi mdrun -s ion_channel.tpr -maxh 0.50 -resethway -noconfout -nsteps ' + self.nsteps
