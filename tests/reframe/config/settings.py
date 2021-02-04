@@ -38,7 +38,7 @@ site_configuration = {
                     'container_platforms': [
                         {
                             'type': 'Singularity',
-                            'modules': [],
+                            'modules': ['foss'],
                             'variables': [],
                         }
                     ],
