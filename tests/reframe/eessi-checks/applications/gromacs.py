@@ -68,7 +68,7 @@ class GromacsNative(GromacsSizedTests):
                 '-resethway', '-noconfout', '-nsteps ' + self.nsteps]
 
 @rfm.parameterized_test(['single'], ['small'], ['large'])
-class GromacsContainerBase(GromacsSizedTests):
+class GromacsContainer(GromacsSizedTests):
     def __init__(self, scale):
 
         super().__init__(scale)
