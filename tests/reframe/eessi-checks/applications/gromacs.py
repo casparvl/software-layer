@@ -44,8 +44,8 @@ class GromacsSizedTests(GromacsBase):
             self.nsteps = '100000'
             self.num_nodes = 10
 
-        self.num_tasks = 16 * self.num_nodes
         self.num_tasks_per_node = 16
+        self.num_tasks = self.num_tasks_per_node * self.num_nodes
         self.tags = {scale}
 
 
