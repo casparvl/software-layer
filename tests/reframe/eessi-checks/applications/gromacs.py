@@ -83,7 +83,7 @@ class GromacsContainer(GromacsBase):
         self.prerun_cmds = ['source shared_alien_cache_minimal.sh > /dev/null']
 
         self.container_platform = 'Singularity'
-        self.container_platform.image = 'docker://eessi/client-pilot:centos7-$(uname -m)'
+        self.container_platform.image = 'docker://ghcr.io/eessi/client-pilot:centos7'
         self.container_platform.options = [
             '--fusemount "container:cvmfs2 cvmfs-config.eessi-hpc.org /cvmfs/cvmfs-config.eessi-hpc.org"',
             '--fusemount "container:cvmfs2 pilot.eessi-hpc.org /cvmfs/pilot.eessi-hpc.org"'
