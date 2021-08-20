@@ -14,7 +14,7 @@ LOCALSPACE="${TMPDIR}"
 
 # Chose the Singularity image to use
 STACK="2020.12"
-SINGULARITY_REMOTE="client-pilot:centos7-$(uname -m)"
+SINGULARITY_REMOTE="client-pilot:centos7"
 
 #########################################################################
 # Variables below this point can be changed (but they don't need to be) #
@@ -40,7 +40,7 @@ mkdir -p $SINGULARITY_HOMEDIR
 # Pull the container
 #if [ ! -f $SINGULARITY_IMAGE ]; then
 #    echo -e "${YELLOW}\nPulling singularity image\n${NC}"
-#    singularity pull $SINGULARITY_IMAGE docker://eessi/$SINGULARITY_REMOTE
+#    singularity pull $SINGULARITY_IMAGE docker://ghcr.io/eessi/$SINGULARITY_REMOTE
 #fi
 
 # Create a default.local file in the users home
