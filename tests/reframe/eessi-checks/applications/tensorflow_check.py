@@ -53,6 +53,8 @@ class GROMACS_EESSI(tensorflow_cnn_check):
     def skip_gpu_test_on_cpu_nodes(self):
         hooks.skip_gpu_test_on_cpu_nodes(self)
 
+    # TODO: create a hook that creates one task per numa domain, and sets the number of threads accordingly
+    # Note that TF doesn't seem to respect OMP_NUM_THREADS directly, we probably need to set tf.config.threading items, which requires modification of the test file...
     # Assign num_tasks, num_tasks_per_node and num_cpus_per_task automatically based on current partition's num_cpus and gpus
     @run_after('setup')
     def set_num_tasks(self):
