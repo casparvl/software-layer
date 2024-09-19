@@ -1,5 +1,6 @@
 # Hooks to customize how EasyBuild installs software in EESSI
 # see https://docs.easybuild.io/en/latest/Hooks.html
+import glob
 import os
 import re
 
@@ -24,6 +25,8 @@ CPU_TARGET_NEOVERSE_N1 = 'aarch64/neoverse_n1'
 CPU_TARGET_NEOVERSE_V1 = 'aarch64/neoverse_v1'
 CPU_TARGET_AARCH64_GENERIC = 'aarch64/generic'
 CPU_TARGET_A64FX = 'aarch64/a64fx'
+
+CPU_TARGET_ZEN4 = 'x86_64/amd/zen4'
 
 EESSI_RPATH_OVERRIDE_ATTR = 'orig_rpath_override_dirs'
 
@@ -81,8 +84,12 @@ def post_ready_hook(self, *args, **kwargs):
     """
     # 'parallel' easyconfig parameter is set via EasyBlock.set_parallel in ready step based on available cores.
     # here we reduce parallellism to only use half of that for selected software,
-    # to avoid failing builds/tests due to out-of-memory problems
-    if self.name in ['TensorFlow', 'libxc']:
+    # to avoid failing builds/tests due to out-of-memory problems;
+    memory_hungry_build = self.name in ['libxc', 'MBX', 'TensorFlow']
+    # on A64FX systems, (HBM) memory is typically scarce, so we need to use fewer cores for some builds
+    cpu_target = get_eessi_envvar('EESSI_SOFTWARE_SUBDIR')
+    memory_hungry_build_a64fx = cpu_target == CPU_TARGET_A64FX and self.name in ['Qt5']
+    if memory_hungry_build or memory_hungry_build_a64fx:
         parallel = self.cfg['parallel']
         if parallel > 1:
             self.cfg['parallel'] = parallel // 2
@@ -215,6 +222,19 @@ def parse_hook_fontconfig_add_fonts(ec, eprefix):
         raise EasyBuildError("fontconfig-specific hook triggered for non-fontconfig easyconfig?!")
 
 
+def parse_hook_grpcio_zlib(ec, ecprefix):
+    """Adjust preinstallopts to use ZLIB from compat layer."""
+    if ec.name == 'grpcio' and ec.version in ['1.57.0']:
+        exts_list = ec['exts_list']
+        original_preinstallopts = (exts_list[0][2])['preinstallopts']
+        original_option = "GRPC_PYTHON_BUILD_SYSTEM_ZLIB=True"
+        new_option = "GRPC_PYTHON_BUILD_SYSTEM_ZLIB=False"
+        (exts_list[0][2])['preinstallopts'] = original_preinstallopts.replace(original_option, new_option, 1)
+        print_msg("Modified the easyconfig to use compat ZLIB with GRPC_PYTHON_BUILD_SYSTEM_ZLIB=False")
+    else:
+        raise EasyBuildError("grpcio-specific hook triggered for a non-grpcio easyconfig?!")
+
+
 def parse_hook_openblas_relax_lapack_tests_num_errors(ec, eprefix):
     """Relax number of failing numerical LAPACK tests for aarch64/neoverse_v1 CPU target for OpenBLAS < 0.3.23"""
     cpu_target = get_eessi_envvar('EESSI_SOFTWARE_SUBDIR')
@@ -294,12 +314,28 @@ def parse_hook_lammps_remove_deps_for_CI_aarch64(ec, *args, **kwargs):
         raise EasyBuildError("LAMMPS-specific hook triggered for non-LAMMPS easyconfig?!")
 
 
+def parse_hook_CP2K_remove_deps_for_aarch64(ec, *args, **kwargs):
+    """
+    Remove x86_64 specific dependencies for the CI and missing installations to pass on aarch64
+    """
+    if ec.name == 'CP2K' and ec.version in ('2023.1',):
+        if os.getenv('EESSI_CPU_FAMILY') == 'aarch64':
+            # LIBXSMM is not supported on ARM with GCC 12.2.0 and 12.3.0
+            # See https://www.cp2k.org/dev:compiler_support
+            # See https://github.com/easybuilders/easybuild-easyconfigs/pull/20951
+            # we need this hook because we check for missing installations for all CPU targets
+            # on an x86_64 VM in GitHub Actions (so condition based on ARCH in LAMMPS easyconfig is always true)
+            ec['dependencies'] = [dep for dep in ec['dependencies'] if dep[0] not in ('libxsmm',)]
+    else:
+        raise EasyBuildError("CP2K-specific hook triggered for non-CP2K easyconfig?!")
+
+
 def pre_prepare_hook_highway_handle_test_compilation_issues(self, *args, **kwargs):
     """
     Solve issues with compiling or running the tests on both
     neoverse_n1 and neoverse_v1 with Highway 1.0.4 and GCC 12.3.0:
       - for neoverse_n1 we set optarch to GENERIC
-      - for neoverse_v1 we completely disable the tests
+      - for neoverse_v1 and a64fx we completely disable the tests
     cfr. https://github.com/EESSI/software-layer/issues/469
     """
     if self.name == 'Highway':
@@ -308,7 +344,7 @@ def pre_prepare_hook_highway_handle_test_compilation_issues(self, *args, **kwarg
         # note: keep condition in sync with the one used in 
         # post_prepare_hook_highway_handle_test_compilation_issues
         if self.version in ['1.0.4'] and tcname == 'GCCcore' and tcversion == '12.3.0':
-            if cpu_target == CPU_TARGET_NEOVERSE_V1:
+            if cpu_target in [CPU_TARGET_A64FX, CPU_TARGET_NEOVERSE_V1]:
                 self.cfg.update('configopts', '-DHWY_ENABLE_TESTS=OFF')
             if cpu_target == CPU_TARGET_NEOVERSE_N1:
                 self.orig_optarch = build_option('optarch')
@@ -352,6 +388,51 @@ def pre_configure_hook_BLIS_a64fx(self, *args, **kwargs):
             self.cfg['configopts'] = ' '.join(config_opts[:-1] + [cflags_var, config_target])
     else:
         raise EasyBuildError("BLIS-specific hook triggered for non-BLIS easyconfig?!")
+
+def pre_configure_hook_extrae(self, *args, **kwargs):
+    """
+    Pre-configure hook for Extrae
+    - avoid use of 'which' in configure script
+    - specify correct path to binutils/zlib (in compat layer)
+    """
+    if self.name == 'Extrae':
+
+        # determine path to Prefix installation in compat layer via $EPREFIX
+        eprefix = get_eessi_envvar('EPREFIX')
+
+        binutils_lib_path_glob_pattern = os.path.join(eprefix, 'usr', 'lib*', 'binutils', '*-linux-gnu', '2.*')
+        binutils_lib_path = glob.glob(binutils_lib_path_glob_pattern)
+        if len(binutils_lib_path) == 1:
+            self.cfg.update('configopts', '--with-binutils=' + binutils_lib_path[0])
+        else:
+            raise EasyBuildError("Failed to isolate path for binutils libraries using %s, got %s",
+                                 binutils_lib_path_glob_pattern, binutils_lib_path)
+
+        # zlib is a filtered dependency, so we need to manually specify it's location to avoid the host version
+        self.cfg.update('configopts', '--with-libz=' + eprefix)
+
+        # replace use of 'which' with 'command -v', since 'which' is broken in EESSI build container;
+        # this must be done *after* running configure script, because initial configuration re-writes configure script,
+        # and problem due to use of which only pops up when running make ?!
+        self.cfg.update('prebuildopts', "cp config/mpi-macros.m4 config/mpi-macros.m4.orig && sed -i 's/`which /`command -v /g' config/mpi-macros.m4 && ")
+    else:
+        raise EasyBuildError("Extrae-specific hook triggered for non-Extrae easyconfig?!")
+
+
+def pre_configure_hook_gobject_introspection(self, *args, **kwargs):
+    """
+    pre-configure hook for GObject-Introspection:
+    - prevent GObject-Introspection from setting $LD_LIBRARY_PATH if EasyBuild is configured to filter it, see:
+      https://github.com/EESSI/software-layer/issues/196
+    """
+    if self.name == 'GObject-Introspection':
+        # inject a line that removes all items from runtime_path_envvar that are in $EASYBUILD_FILTER_ENVVARS
+        sed_cmd = r'sed -i "s@\(^\s*runtime_path_envvar = \)\(.*\)@'
+        sed_cmd += r'\1\2\n\1 [x for x in runtime_path_envvar if not x in os.environ.get(\'EASYBUILD_FILTER_ENV_VARS\', \'\').split(\',\')]@g"'
+        sed_cmd += ' %(start_dir)s/giscanner/ccompiler.py && '
+        self.cfg.update('preconfigopts', sed_cmd)
+    else:
+        raise EasyBuildError("GObject-Introspection-specific hook triggered for non-GObject-Introspection easyconfig?!")
 
 
 def pre_configure_hook_gromacs(self, *args, **kwargs):
@@ -435,19 +516,21 @@ def pre_configure_hook_wrf_aarch64(self, *args, **kwargs):
         raise EasyBuildError("WRF-specific hook triggered for non-WRF easyconfig?!")
 
 
-def pre_configure_hook_atspi2core_filter_ld_library_path(self, *args, **kwargs):
+def pre_configure_hook_LAMMPS_zen4(self, *args, **kwargs):
     """
-    pre-configure hook for at-spi2-core:
-    - instruct GObject-Introspection's g-ir-scanner tool to not set $LD_LIBRARY_PATH
-      when EasyBuild is configured to filter it, see:
-      https://github.com/EESSI/software-layer/issues/196
+    pre-configure hook for LAMMPS:
+    - set kokkos_arch on x86_64/amd/zen4
     """
-    if self.name == 'at-spi2-core':
-        if build_option('filter_env_vars') and 'LD_LIBRARY_PATH' in build_option('filter_env_vars'):
-            sed_cmd = 'sed -i "s/gir_extra_args = \[/gir_extra_args = \[\\n  \'--lib-dirs-envvar=FILTER_LD_LIBRARY_PATH\',/g" %(start_dir)s/atspi/meson.build && '
-            self.cfg.update('preconfigopts', sed_cmd)
+
+    cpu_target = get_eessi_envvar('EESSI_SOFTWARE_SUBDIR')
+    if self.name == 'LAMMPS':
+        if self.version == '2Aug2023_update2':
+            if get_cpu_architecture() == X86_64:
+                if cpu_target == CPU_TARGET_ZEN4:
+                    # There is no support for ZEN4 in LAMMPS yet so falling back to ZEN3
+                    self.cfg['kokkos_arch'] = 'ZEN3'
     else:
-        raise EasyBuildError("at-spi2-core-specific hook triggered for non-at-spi2-core easyconfig?!")
+        raise EasyBuildError("LAMMPS-specific hook triggered for non-LAMMPS easyconfig?!")
 
 
 def pre_test_hook(self,*args, **kwargs):
@@ -692,7 +775,9 @@ PARSE_HOOKS = {
     'casacore': parse_hook_casacore_disable_vectorize,
     'CGAL': parse_hook_cgal_toolchainopts_precise,
     'fontconfig': parse_hook_fontconfig_add_fonts,
+    'grpcio': parse_hook_grpcio_zlib,
     'LAMMPS': parse_hook_lammps_remove_deps_for_CI_aarch64,
+    'CP2K': parse_hook_CP2K_remove_deps_for_aarch64,
     'OpenBLAS': parse_hook_openblas_relax_lapack_tests_num_errors,
     'pybind11': parse_hook_pybind11_replace_catch2,
     'Qt5': parse_hook_qt5_check_qtwebengine_disable,
@@ -709,13 +794,15 @@ POST_PREPARE_HOOKS = {
 }
 
 PRE_CONFIGURE_HOOKS = {
-    'at-spi2-core': pre_configure_hook_atspi2core_filter_ld_library_path,
     'BLIS': pre_configure_hook_BLIS_a64fx,
+    'GObject-Introspection': pre_configure_hook_gobject_introspection,
+    'Extrae': pre_configure_hook_extrae,
     'GROMACS': pre_configure_hook_gromacs,
     'libfabric': pre_configure_hook_libfabric_disable_psm3_x86_64_generic,
     'MetaBAT': pre_configure_hook_metabat_filtered_zlib_dep,
     'OpenBLAS': pre_configure_hook_openblas_optarch_generic,
     'WRF': pre_configure_hook_wrf_aarch64,
+    'LAMMPS': pre_configure_hook_LAMMPS_zen4,
 }
 
 PRE_TEST_HOOKS = {
