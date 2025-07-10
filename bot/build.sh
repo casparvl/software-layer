@@ -3,7 +3,7 @@
 # give up as soon as any error occurs
 set -e
 
-git clone https://github.com/casparl/software-layer-scripts --branch fix_test_accelerator_override
+git clone https://github.com/casparvl/software-layer-scripts --branch fix_test_accelerator_override
 
 # symlink everything, except for:
 # - common files like LICENSE and README.md
