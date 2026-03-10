@@ -9,7 +9,7 @@ TOPDIR=$(dirname $(realpath $0))
 commit_sha=$(cat ${TOPDIR}/commit_sha)
 
 # Get a shallow clone first
-git clone --depth 1 --filter=blob:none --no-checkout https://github.com/EESSI/software-layer-scripts
+git clone --depth 1 --filter=blob:none --no-checkout https://github.com/casparvl/software-layer-scripts
 
 # Fetch the relevant commit & check it out
 cd software-layer-scripts
