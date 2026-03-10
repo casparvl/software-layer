@@ -3,7 +3,7 @@
 # give up as soon as any error occurs
 set -e
 
-git clone --single-branch --branch fix_bind_mount_bug_when_using_proxy https://github.com/trz42/software-layer-scripts
+git clone https://github.com/EESSI/software-layer-scripts
 
 # symlink everything, except for:
 # - common files like LICENSE and README.md
