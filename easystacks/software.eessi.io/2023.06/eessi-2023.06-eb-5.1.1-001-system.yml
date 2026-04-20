@@ -8,3 +8,4 @@ easyconfigs:
       options:
         # see https://github.com/easybuilders/easybuild-easyconfigs/pull/24024
         from-commit: d250e047335cff444680790ceb026676cfb65eb8
+  - cowsay-3.04.eb
